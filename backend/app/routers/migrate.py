@@ -12,7 +12,7 @@ router = APIRouter(prefix="/api/migrate", tags=["数据迁移管理"])
 
 service = MigrateService()
 
-LIST_FIELDS = ["任务编号", "源表名", "目标表名", "迁移方式", "数据范围", "校验规则", "迁移耗时", "任务状态"]
+LIST_FIELDS = ["任务编号", "源表名", "目标表名", "迁移方式", "数据范围", "校验规则", "操作批次", "任务状态"]
 STATUSES = ["待执行", "迁移中", "已完成", "已回滚"]
 
 
@@ -56,6 +56,15 @@ def run_action(entry_id: int, payload: EntryPayload) -> ActionResult:
     if entry is None:
         return ActionResult(ok=False, message=message)
     return ActionResult(ok=True, message=message, entry=entry)
+
+
+@router.post("/impact-review/{batch}", response_model=ActionResult)
+def review_impact(batch: str) -> ActionResult:
+    """迁移模块读取影响传播结果，并把核对结果同步到血缘影响工作台。"""
+    summary, message = service.review_impact(batch)
+    if summary is None:
+        return ActionResult(ok=False, message=message)
+    return ActionResult(ok=True, message=message, entry=summary)
 
 
 @router.get("/export")

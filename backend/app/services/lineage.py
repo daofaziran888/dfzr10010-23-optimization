@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.services.impact import ImpactService
 from app.store import store
 
 MODULE = "lineage"
@@ -28,7 +29,13 @@ class LineageService:
             rows = [row for row in rows if row.get("status") == status]
         total = len(rows)
         start = max(page - 1, 0) * size
-        return rows[start:start + size], total
+        items = [dict(row) for row in rows[start:start + size]]
+        # 血缘列表与影响视图共用同一版本口径，两处始终指向同一份影响传播结果
+        versions = ImpactService().versions_by_batch()
+        for item in items:
+            version = versions.get(str(item.get("操作批次") or ""))
+            item["影响版本"] = f"v{version}" if version else "未生成"
+        return items, total
 
     def get_entry(self, entry_id: int) -> dict[str, Any] | None:
         return store.find(MODULE, entry_id)

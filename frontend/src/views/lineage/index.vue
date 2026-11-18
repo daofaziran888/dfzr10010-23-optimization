@@ -47,6 +47,7 @@
             >
               {{ action }}
             </button>
+            <button class="link" type="button" @click="openImpact(row)">影响视图</button>
           </td>
         </tr>
         <tr v-if="!rows.length">
@@ -64,17 +65,19 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 
 import { request } from '@/api/client'
 
 type Row = Record<string, string | number | null>
 
 const ENDPOINT = '/api/lineage'
-const columns = ["记录编号", "上游表名", "下游表名", "转换类型", "字段映射", "操作时间", "操作批次", "记录状态"]
+const columns = ["记录编号", "上游表名", "下游表名", "转换类型", "字段映射", "操作时间", "操作批次", "影响版本", "记录状态"]
 const actions = ["关联血缘", "标记过期", "清理记录"]
 const statuses = ["已记录", "已关联", "已过期", "已清理"]
 const stats = [{"label": "血缘记录总数", "value": 0}, {"label": "已关联记录", "value": 0}, {"label": "已过期记录", "value": 0}]
 
+const router = useRouter()
 const rows = ref<Row[]>([])
 const total = ref(0)
 const errorMessage = ref('')
@@ -94,15 +97,21 @@ function openCreate() {
   errorMessage.value = '血缘记录登记入口尚未接入审批流'
 }
 
+function openImpact(row: Row) {
+  // 血缘列表与影响视图读取同一份影响传播结果，两处指向同版本
+  router.push({ path: '/impact', query: { batch: String(row['操作批次'] ?? '') } })
+}
+
 async function runAction(action: string, row: Row) {
   errorMessage.value = ''
   try {
     const response = await request(`${ENDPOINT}/${row.id}/actions`, {
       method: 'POST',
-      body: JSON.stringify({ action }),
+      body: JSON.stringify({ values: { action } }),
     })
-    if (!response.ok) {
-      throw new Error('湖仓血缘追踪动作未生效，请稍后重试')
+    const payload = await response.json()
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.message ?? '湖仓血缘追踪动作未生效，请稍后重试')
     }
     await reload()
   } catch (error) {

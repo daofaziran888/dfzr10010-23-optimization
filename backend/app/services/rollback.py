@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.services.impact import ImpactService
 from app.store import store
 
 MODULE = "rollback"
@@ -59,3 +60,70 @@ class RollbackService:
         entry["pending"] = target != STATUS_ORDER[-1]
         entry["abnormal"] = action in NEGATIVE_ACTIONS
         return entry, f"回滚记录已{action}"
+
+    # ---------- 血缘影响联动 ----------
+    def declare_compat(self, batch: str, version: Any) -> tuple[dict[str, Any] | None, str]:
+        """回滚模块先声明血缘影响工作台中影响传播结果的兼容目标，再引用已有数据。"""
+        return ImpactService().declare_compat(batch, "rollback", version)
+
+    def attach_impact(self, batch: str) -> tuple[dict[str, Any] | None, str]:
+        """回滚清单接入同一版本影响传播结果，保存受影响节点、边和无环路径。
+
+        失败时只重试影响传播结果未完成项，回滚模块继续使用上一稳定口径。
+        """
+        batch = str(batch or "").strip()
+        impact = ImpactService()
+        result = impact.get_by_batch(batch)
+        if result is None:
+            return None, f"操作批次 {batch} 尚未发布影响传播结果，请先在血缘影响工作台生成"
+        declared = impact.compat_for(batch, "rollback")
+        if declared is None:
+            return None, "回滚模块需先声明血缘影响工作台中影响传播结果的兼容目标，再引用已有数据"
+        stable = result.get("稳定口径版本")
+        stable_text = f"v{stable}" if stable else "（暂无）"
+        if str(declared) != str(result["版本"]):
+            return None, (
+                f"影响传播结果当前版本 v{result['版本']} 与声明的兼容目标 v{declared} 不一致，"
+                f"回滚模块继续使用上一稳定口径{stable_text}"
+            )
+        records = [row for row in store.rows(MODULE) if str(row.get("操作批次")) == batch]
+        if not records:
+            return None, f"操作批次 {batch} 没有需要接入的回滚记录"
+        confirmed = set(result.get("已确认节点", []))
+        incomplete: list[str] = []
+        for record in records:
+            table = str(record.get("表名称") or "").strip()
+            names, sub_edges, sub_paths = impact.affected_from(result, table)
+            detail = record.setdefault("影响同步明细", [])
+            done = {item["表名"] for item in detail if item.get("状态") == "完成"}
+            for name in names:
+                if name in done:
+                    continue  # 已完成项不重复处理，只重试未完成项
+                status = "完成" if name in confirmed else "未完成"
+                for item in detail:
+                    if item["表名"] == name:
+                        item["状态"] = status
+                        break
+                else:
+                    detail.append({"表名": name, "状态": status})
+            record["受影响节点"] = names
+            record["受影响边"] = sub_edges
+            record["无环路径"] = sub_paths
+            pending_items = [item["表名"] for item in detail if item.get("状态") != "完成"]
+            if pending_items:
+                incomplete.extend(pending_items)
+                record["影响传播结果版本"] = record.get("稳定口径版本")
+            else:
+                record["影响传播结果版本"] = result["版本"]
+                record["稳定口径版本"] = result["版本"]
+        if incomplete:
+            todo = sorted(set(incomplete))
+            return {"未完成项": todo}, (
+                f"影响传播结果存在未完成项：{'、'.join(todo)}，已只重试未完成项，"
+                f"回滚模块继续使用上一稳定口径{stable_text}"
+            )
+        impact.record_sync(batch, "rollback")
+        return {"同步记录数": len(records)}, (
+            f"回滚清单已接入 v{result['版本']} 影响传播结果，受影响节点、边与无环路径已保存，"
+            "批次结果已同步至血缘影响工作台"
+        )

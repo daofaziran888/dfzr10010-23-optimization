@@ -27,6 +27,24 @@
       <button class="btn ghost" type="button" @click="resetFilters">重置条件</button>
     </form>
 
+    <section class="impact-panel">
+      <h3>血缘影响联动</h3>
+      <p class="page-desc">先声明血缘影响工作台中影响传播结果的兼容目标，再引用已有数据；失败时只重试未完成项，并沿用上一稳定口径。</p>
+      <div class="filter-bar">
+        <label class="filter-item">
+          <span>操作批次</span>
+          <input v-model="impactBatch" placeholder="如 20261115-18" />
+        </label>
+        <label class="filter-item">
+          <span>兼容版本</span>
+          <input v-model="compatVersion" placeholder="如 1" />
+        </label>
+        <button class="btn" type="button" @click="declareCompat">声明兼容目标</button>
+        <button class="btn" type="button" @click="attachImpact">接入影响结果</button>
+      </div>
+      <p v-if="impactMessage" class="page-desc">{{ impactMessage }}</p>
+    </section>
+
     <table class="data-table">
       <thead>
         <tr>
@@ -70,7 +88,7 @@ import { request } from '@/api/client'
 type Row = Record<string, string | number | null>
 
 const ENDPOINT = '/api/rollback'
-const columns = ["记录编号", "表名称", "回滚版本", "回滚原因", "影响范围", "恢复耗时", "回滚时间", "回滚状态"]
+const columns = ["记录编号", "表名称", "操作批次", "回滚版本", "回滚原因", "影响范围", "影响传播结果版本", "回滚状态"]
 const actions = ["执行回滚", "确认恢复", "归档记录"]
 const statuses = ["待回滚", "回滚中", "已回滚", "已恢复"]
 const stats = [{"label": "回滚记录总数", "value": 0}, {"label": "回滚中记录", "value": 0}, {"label": "已回滚记录", "value": 0}]
@@ -80,6 +98,9 @@ const total = ref(0)
 const errorMessage = ref('')
 const filters = ref<Record<string, string>>({})
 const filterFields = columns.slice(0, 3)
+const impactBatch = ref('')
+const compatVersion = ref('')
+const impactMessage = ref('')
 
 function resetFilters() {
   filters.value = {}
@@ -99,14 +120,52 @@ async function runAction(action: string, row: Row) {
   try {
     const response = await request(`${ENDPOINT}/${row.id}/actions`, {
       method: 'POST',
-      body: JSON.stringify({ action }),
+      body: JSON.stringify({ values: { action } }),
     })
-    if (!response.ok) {
-      throw new Error('数据回滚恢复动作未生效，请稍后重试')
+    const payload = await response.json()
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.message ?? '数据回滚恢复动作未生效，请稍后重试')
     }
     await reload()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '数据回滚恢复操作失败'
+  }
+}
+
+async function declareCompat() {
+  errorMessage.value = ''
+  impactMessage.value = ''
+  try {
+    const response = await request(`${ENDPOINT}/impact/declare`, {
+      method: 'POST',
+      body: JSON.stringify({ values: { 操作批次: impactBatch.value.trim(), 兼容版本: compatVersion.value.trim() } }),
+    })
+    const payload = await response.json()
+    if (!payload.ok) {
+      throw new Error(payload.message ?? '兼容目标声明失败')
+    }
+    impactMessage.value = payload.message ?? ''
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : '兼容目标声明失败'
+  }
+}
+
+async function attachImpact() {
+  errorMessage.value = ''
+  impactMessage.value = ''
+  try {
+    const response = await request(`${ENDPOINT}/impact/attach`, {
+      method: 'POST',
+      body: JSON.stringify({ values: { 操作批次: impactBatch.value.trim() } }),
+    })
+    const payload = await response.json()
+    impactMessage.value = payload.message ?? ''
+    if (!payload.ok) {
+      errorMessage.value = payload.message ?? '接入影响结果失败'
+    }
+    await reload()
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : '接入影响结果失败'
   }
 }
 
@@ -128,3 +187,17 @@ async function reload() {
 
 onMounted(reload)
 </script>
+
+<style scoped>
+.impact-panel {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+}
+.impact-panel h3 {
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+</style>

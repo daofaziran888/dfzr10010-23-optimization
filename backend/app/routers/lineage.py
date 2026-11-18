@@ -12,7 +12,7 @@ router = APIRouter(prefix="/api/lineage", tags=["湖仓血缘追踪"])
 
 service = LineageService()
 
-LIST_FIELDS = ["记录编号", "上游表名", "下游表名", "转换类型", "字段映射", "操作时间", "操作批次", "记录状态"]
+LIST_FIELDS = ["记录编号", "上游表名", "下游表名", "转换类型", "字段映射", "操作时间", "操作批次", "影响版本", "记录状态"]
 STATUSES = ["已记录", "已关联", "已过期", "已清理"]
 
 

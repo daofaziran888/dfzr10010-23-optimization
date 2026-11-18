@@ -220,3 +220,15 @@ class MigrateEntry(BaseModel):
     field_5: str | None = None  # 校验规则
     field_6: str | None = None  # 迁移耗时
     field_7: str | None = None  # 任务状态
+
+class ImpactEntry(BaseModel):
+    """影响传播结果明细结构。"""
+
+    field_0: str | None = None  # 结果编号
+    field_1: str | None = None  # 操作批次
+    field_2: str | None = None  # 版本
+    field_3: str | None = None  # 节点数
+    field_4: str | None = None  # 边数
+    field_5: str | None = None  # 环数量
+    field_6: str | None = None  # 导出状态
+    field_7: str | None = None  # 结果状态

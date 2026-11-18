@@ -27,6 +27,19 @@
       <button class="btn ghost" type="button" @click="resetFilters">重置条件</button>
     </form>
 
+    <section class="impact-panel">
+      <h3>血缘影响核对</h3>
+      <p class="page-desc">读取血缘影响工作台的影响传播结果，核对迁移映射是否被采纳，并把核对结果同步到血缘影响工作台。</p>
+      <div class="filter-bar">
+        <label class="filter-item">
+          <span>操作批次</span>
+          <input v-model="impactBatch" placeholder="如 20261115-18" />
+        </label>
+        <button class="btn" type="button" @click="reviewImpact">核对影响结果</button>
+      </div>
+      <p v-if="impactMessage" class="page-desc">{{ impactMessage }}</p>
+    </section>
+
     <table class="data-table">
       <thead>
         <tr>
@@ -70,7 +83,7 @@ import { request } from '@/api/client'
 type Row = Record<string, string | number | null>
 
 const ENDPOINT = '/api/migrate'
-const columns = ["任务编号", "源表名", "目标表名", "迁移方式", "数据范围", "校验规则", "迁移耗时", "任务状态"]
+const columns = ["任务编号", "源表名", "目标表名", "迁移方式", "数据范围", "校验规则", "操作批次", "任务状态"]
 const actions = ["执行迁移", "回滚迁移", "归档任务"]
 const statuses = ["待执行", "迁移中", "已完成", "已回滚"]
 const stats = [{"label": "迁移任务总数", "value": 0}, {"label": "迁移中任务", "value": 0}, {"label": "已完成任务", "value": 0}]
@@ -80,6 +93,8 @@ const total = ref(0)
 const errorMessage = ref('')
 const filters = ref<Record<string, string>>({})
 const filterFields = columns.slice(0, 3)
+const impactBatch = ref('')
+const impactMessage = ref('')
 
 function resetFilters() {
   filters.value = {}
@@ -99,14 +114,38 @@ async function runAction(action: string, row: Row) {
   try {
     const response = await request(`${ENDPOINT}/${row.id}/actions`, {
       method: 'POST',
-      body: JSON.stringify({ action }),
+      body: JSON.stringify({ values: { action } }),
     })
-    if (!response.ok) {
-      throw new Error('数据迁移管理动作未生效，请稍后重试')
+    const payload = await response.json()
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.message ?? '数据迁移管理动作未生效，请稍后重试')
     }
     await reload()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '数据迁移管理操作失败'
+  }
+}
+
+async function reviewImpact() {
+  errorMessage.value = ''
+  impactMessage.value = ''
+  const batch = impactBatch.value.trim()
+  if (!batch) {
+    errorMessage.value = '请先填写操作批次'
+    return
+  }
+  try {
+    const response = await request(`${ENDPOINT}/impact-review/${encodeURIComponent(batch)}`, {
+      method: 'POST',
+      body: JSON.stringify({ values: {} }),
+    })
+    const payload = await response.json()
+    if (!payload.ok) {
+      throw new Error(payload.message ?? '影响结果核对失败')
+    }
+    impactMessage.value = payload.message ?? ''
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : '影响结果核对失败'
   }
 }
 
@@ -128,3 +167,17 @@ async function reload() {
 
 onMounted(reload)
 </script>
+
+<style scoped>
+.impact-panel {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+}
+.impact-panel h3 {
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+</style>

@@ -12,7 +12,7 @@ router = APIRouter(prefix="/api/rollback", tags=["数据回滚恢复"])
 
 service = RollbackService()
 
-LIST_FIELDS = ["记录编号", "表名称", "回滚版本", "回滚原因", "影响范围", "恢复耗时", "回滚时间", "回滚状态"]
+LIST_FIELDS = ["记录编号", "表名称", "操作批次", "回滚版本", "回滚原因", "影响范围", "影响传播结果版本", "回滚状态"]
 STATUSES = ["待回滚", "回滚中", "已回滚", "已恢复"]
 
 
@@ -56,6 +56,27 @@ def run_action(entry_id: int, payload: EntryPayload) -> ActionResult:
     if entry is None:
         return ActionResult(ok=False, message=message)
     return ActionResult(ok=True, message=message, entry=entry)
+
+
+@router.post("/impact/declare", response_model=ActionResult)
+def declare_compat(payload: EntryPayload) -> ActionResult:
+    """回滚模块先声明血缘影响工作台中影响传播结果的兼容目标，再引用已有数据。"""
+    declaration, message = service.declare_compat(
+        str(payload.values.get("操作批次") or ""),
+        payload.values.get("兼容版本"),
+    )
+    if declaration is None:
+        return ActionResult(ok=False, message=message)
+    return ActionResult(ok=True, message=message, entry=declaration)
+
+
+@router.post("/impact/attach", response_model=ActionResult)
+def attach_impact(payload: EntryPayload) -> ActionResult:
+    """回滚清单接入同一版本影响传播结果；失败时只重试未完成项，并沿用上一稳定口径。"""
+    summary, message = service.attach_impact(str(payload.values.get("操作批次") or ""))
+    if summary is None:
+        return ActionResult(ok=False, message=message)
+    return ActionResult(ok="未完成项" not in summary, message=message, entry=summary)
 
 
 @router.get("/export")

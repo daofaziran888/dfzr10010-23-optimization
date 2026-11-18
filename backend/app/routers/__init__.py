@@ -22,5 +22,6 @@ from app.routers import lineage as router_lineage
 from app.routers import schedule as router_schedule
 from app.routers import stats as router_stats
 from app.routers import migrate as router_migrate
+from app.routers import impact as router_impact
 
-ROUTERS = [router_tablefmt, router_compact, router_compress, router_metadata, router_snapshot, router_branch, router_rollback, router_partition, router_iceberg, router_catalog, router_cleanup, router_quota, router_lineage, router_schedule, router_stats, router_migrate]
+ROUTERS = [router_tablefmt, router_compact, router_compress, router_metadata, router_snapshot, router_branch, router_rollback, router_partition, router_iceberg, router_catalog, router_cleanup, router_quota, router_lineage, router_schedule, router_stats, router_migrate, router_impact]
